@@ -19,5 +19,11 @@ It creates subfolders with output numpy array files in it (within the folder whe
 
 for the channels activated in `pyrttov_IR+VIS.py`. 
 
+### You want to contribute
+Please open an issue.
+Current To-Do-List:
+1) change from numpy output to netcdf with xarray
+2) 
+
 ### Note:
 The python version calling `pyrttov_IR+VIS.py` must be the same as the one used for compiling RTTOV.
