@@ -168,7 +168,7 @@ def call_rttov(ds, outdir, config):
     t_np = np.array([[time_dt.year,time_dt.month,time_dt.day,time_dt.hour,time_dt.minute,0]], dtype=np.int32)
     myProfiles.DateTimes = expand(nprofiles, t_np)
     # angles[4][nprofiles]: satzen, satazi, sunzen, sunazi
-    angles = np.array([[0.,  0., sunzen, sunazi]], dtype=np.float64)
+    angles = np.array([[45.,  180., sunzen, sunazi]], dtype=np.float64)
     myProfiles.Angles = expand(nprofiles, angles)
 
     # surfgeom[3][nprofiles]: lat, lon, elev
@@ -253,7 +253,7 @@ def setup_IR():
     config = Container()
     seviriRttov = pyrttov.Rttov()
 
-    chan_list_seviri = (3, 4, 6, 9)   #  NOT SURE IF CORRECT
+    chan_list_seviri = (3, 4, 6, 9)   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
     config.nchan = len(chan_list_seviri)
     config.chan_seviri_names = ('NIR16', 'IR39', 'WV73', 'IR108')
 
@@ -302,7 +302,7 @@ def setup_VIS():
     seviriRttov = pyrttov.Rttov()
 
     # select channels
-    chan_list_seviri = (1, 2 )   # 3, 4, 6, 9 #  NOT SURE IF CORRECT
+    chan_list_seviri = (1, 2 )   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
     config.nchan = len(chan_list_seviri)
     config.chan_seviri_names = ('VIS06', 'VIS08') #, 'NIR16', 'IR39', 'WV73', 'IR108')
 
