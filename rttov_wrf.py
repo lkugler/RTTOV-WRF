@@ -1,20 +1,21 @@
-#!/opt/sw/spack-0.12.1/opt/spack/linux-centos7-x86_64/intel-19.0.5.281/miniconda3-4.6.14-he6cj4ytueiygecmiasewojny57sv67s/bin/python
 
 import os, time
 import sys
 import glob
 from paths import path_RTTOV, path_conda
 
-sys.path.append(path_RTTOV+'/wrapper')
-import pyrttov
-
 if path_conda:
     sys.path.append(path_conda)
+
+import IPython
 import numpy as np
 import datetime as dt
 import pandas as pd
 import xarray as xr
 from pysolar.solar import get_altitude, get_azimuth
+
+sys.path.append(path_RTTOV+'/wrapper')
+import pyrttov
 
 class Container(object):
     pass
@@ -34,7 +35,7 @@ def wrftime_to_datetime(xtime):
 def add_timezone_UTC(t):
     return dt.datetime(t.year, t.month, t.day, t.hour, t.minute, tzinfo=dt.timezone.utc)
 
-def call_rttov(ds, outdir, config):
+def call_pyrttov(ds, outdir, config):
     time_np = ds.XTIME.values
     time_dt = add_timezone_UTC(wrftime_to_datetime(time_np))
     print(time_dt)
@@ -103,9 +104,9 @@ def call_rttov(ds, outdir, config):
     # sfc_p_t_qv_u_v_fetch = np.concatenate((arr[:,-1,:3], sfc_u_v_fetch), axis=-1)
 
     # quickfix qv
-    #Q[:, :22] = 1e-6  # kg/kg  until 120 hPa
-    qv[qv<1e-9] = 1e-9
-    # FIXME: why is this necessary?
+    # Q[:, :22] = 1e-6  # kg/kg  until 120 hPa
+    if True:  # FIXME: is this necessary?
+        qv[qv<1e-9] = 1e-9
 
     # print('surface p_t_qv_u_v_fetch:', sfc_p_t_qv_u_v_fetch[0,...])
     # print('lowest level  p tmp qv qc:', arr[0, -1, :])
@@ -139,31 +140,23 @@ def call_rttov(ds, outdir, config):
 
     # quickfix
     print('cfrac', np.min(cfrac), np.max(cfrac))
+    myProfiles.Cfrac = cfrac  # cloud fraction
 
     # WATER CLOUDS
     myProfiles.ClwScheme = 2*np.ones((nprofiles))  # "Deff"
     myProfiles.Clwde = 20*np.ones((nprofiles,nlevels))  # microns effective diameter
     # Cloud types - concentrations in kg/kg
-    # Stratus Continental STCO
-    # Stratus Maritime STMA
-    # Cumulus Continental Clean CUCC
-    # Cumulus Continental Polluted CUCP
-    # Cumulus Maritime CUMA
-    myProfiles.Stco = clw  # type 1
-    myProfiles.Stma = 0*clw  # type 2
-    myProfiles.Cucc = 0*clw  # type 3
-    myProfiles.Cucp = 0*clw  # type 4
-    myProfiles.Cuma = 0*clw  # type 5
+    myProfiles.Stco = clw  # Stratus Continental STCO
+    myProfiles.Stma = 0*clw  # Stratus Maritime STMA
+    myProfiles.Cucc = 0*clw  # Cumulus Continental Clean CUCC
+    myProfiles.Cucp = 0*clw  # Cumulus Continental Polluted CUCP
+    myProfiles.Cuma = 0*clw  # Cumulus Maritime CUMA
+    myProfiles.Cirr = ciw  # all ice clouds CIRR
 
-    # Ice clouds (all types despite the name “CIRR”) CIRR
     # icecloud[2][nprofiles]: ice_scheme, idg
     icecloud = np.array([[1, 1]], dtype=np.int32)
     myProfiles.IceCloud = expand(nprofiles, icecloud)
     myProfiles.Icede = 60 * np.ones((nprofiles,nlevels))  # microns effective diameter
-    myProfiles.Cirr = ciw  # type 6
-
-    # cloud fraction
-    myProfiles.Cfrac = cfrac  # cloud fraction
 
     myProfiles.S2m = expand(nprofiles, sfc_p_t_qv_u_v_fetch)
     t_np = np.array([[time_dt.year,time_dt.month,time_dt.day,time_dt.hour,time_dt.minute,0]], dtype=np.int32)
@@ -195,9 +188,6 @@ def call_rttov(ds, outdir, config):
     surfemisrefl_seviri[1,:,:] = albedo/np.pi  # reflectance
     seviriRttov.SurfEmisRefl = surfemisrefl_seviri
 
-    # print(np.mean(surfemisrefl_seviri[0,...]))
-    # print(np.mean(surfemisrefl_seviri[1,...]))
-
     albedo_emiss_by_RTTOV = False
     if albedo_emiss_by_RTTOV:
         # Surface emissivity/reflectance arrays must be initialised *before every call to RTTOV*
@@ -214,9 +204,6 @@ def call_rttov(ds, outdir, config):
             # is OK to continue and call RTTOV with calcemis/calcrefl set to TRUE everywhere
             sys.stderr.write("Error calling atlas: {!s}".format(e))
 
-
-    # print(np.mean(surfemisrefl_seviri[0,...]))
-    # print(np.mean(surfemisrefl_seviri[1,...]))
     # Call the RTTOV direct model for each instrument:
     # no arguments are supplied to runDirect so all loaded channels are simulated
     try:
@@ -232,26 +219,50 @@ def call_rttov(ds, outdir, config):
         print('Quality (qualityflag>0, #issues):', np.sum(seviriRttov.RadQuality > 0))
 
 
-    # save each channel to separate file
-    #nchan = seviriRttov.BtRefl.shape[1]
-    for i, name in enumerate(config.chan_seviri_names): #, range(config.nchan)):
-        #if 'VIS' in name:
-        #    continue  # do nothing
-        data = seviriRttov.BtRefl[:,i]
+    if config.output_xarray:  # setup xarray output data structure
+        dsout = ds.copy()
+        delvars = [a for a in list(ds.variables) if a != 'OLR']
+        dsout = dsout.drop_vars(delvars)
+        print(list(dsout.variables))
 
+    # save each channel to separate file
+    for i, name in enumerate(config.chan_seviri_names):
+        data = seviriRttov.BtRefl[:,i]
         mmin = data.ravel().min()
         mmax = data.ravel().max()
         print(name, 'min:', mmin, 'max:', mmax)
+        input_time = time_dt.strftime('%Y-%m-%d_%H:%M')
 
-        input_time = time_dt.strftime('%Y-%m-%d_%H:%M')  # os.path.basename(f_in).split('.')[1]
+        if config.output_xarray:
+            nx = len(ds.west_east)
+            dsout[name] = (("south_north", "west_east"),
+                            data.reshape(nx, nx).astype(np.float32))
+        else:
+            fout = outdir+'/rttov_output/'+input_time+'/RTout.'+input_time+'.'+name
+            os.makedirs(os.path.dirname(fout), exist_ok=True)
+            np.save(fout, data)
+            print('---------', fout+'.npy', 'saved ---------')
 
-        fout = outdir+'/rttov_output/'+input_time+'/RTout.'+input_time+'.'+name
-        os.makedirs(os.path.dirname(fout), exist_ok=True)
-        np.save(fout, data)
-        print('---------', fout+'.npy', 'saved ---------')
+    if config.output_xarray:
+        dsout.drop_vars('OLR')
+        if outdir is None:
+            return dsout
+        else:  # write to disk
+            fout = outdir+'/RTout.'+input_time+'.nc'
+            if os.path.isfile(fout):  # append to existing file
+                dsout_orig = xr.open_dataset(fout)
+                for var in dsout:
+                    dsout_orig[var] = dsout[var]
+                os.remove(fout)
+                dsout_orig.to_netcdf(fout)
+            else:
+                dsout.to_netcdf(fout)
 
-def setup_IR():
+############## CONFIGURATION
+
+def setup_IR(output_xarray=False):
     config = Container()
+    config.output_xarray = output_xarray
     seviriRttov = pyrttov.Rttov()
 
     chan_list_seviri = (3, 4, 6, 9)   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
@@ -264,7 +275,7 @@ def setup_IR():
                             "/rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
 
     seviriRttov.Options.StoreRad = False
-    seviriRttov.Options.Nthreads = 48
+    seviriRttov.Options.Nthreads = 12
     seviriRttov.Options.NprofsPerCall = 1000
 
     seviriRttov.Options.AddInterp = True
@@ -298,8 +309,9 @@ def setup_IR():
     config.brdfAtlas = brdfAtlas
     return config
 
-def setup_VIS():
+def setup_VIS(output_xarray=False):
     config = Container()
+    config.output_xarray = output_xarray
     seviriRttov = pyrttov.Rttov()
 
     # select channels
@@ -329,7 +341,7 @@ def setup_VIS():
                                           "/rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_deff.H5")
 
     seviriRttov.Options.StoreRad = False
-    seviriRttov.Options.Nthreads = 48
+    seviriRttov.Options.Nthreads = 12
     seviriRttov.Options.NprofsPerCall = 1000
 
     seviriRttov.Options.AddInterp = True
@@ -379,33 +391,64 @@ def convert_byte_times_to_str(nc4_variable_time):
         times.append(time_str)
     return times
 
+##########################
+def calc_single_channel(channel, ds):
+    """User interface to calculate sat image ad hoc
+
+    Parameters
+    ----------
+    channel : str
+        one out of ('VIS06', 'VIS08', 'NIR16', 'IR39', 'WV73', 'IR108')
+    ds : xarray.DataArray
+
+    Returns
+    -------
+    xarray.Dataset
+        Contains the sat channel variable, coordinates from the input dataset.
+    """
+    chans = {'VIS06': 1, 'VIS08': 2, 'NIR16': 3, 'IR39': 4, 'WV73': 6, 'IR108': 9}
+
+    ichan = chans[channel]
+    if ichan >= 3:
+        config = setup_IR(output_xarray=True)
+    else:
+        config = setup_VIS(output_xarray=True)
+    config.nchan = 1
+    config.chan_seviri_names = (channel, )
+    dsout = call_pyrttov(ds, None, config)
+    return dsout
 
 if __name__ == '__main__':
-    """Converts wrfout to numpy arrays of radiance/reflectance
+    """Converts wrfout to numpy/xarray of brightness temperature/reflectance
+
+    Example call:
+    python rttov_wrf.py /path/to/wrfout_d01 VIS xr
+
     output is put in subfolder of wrfout file
     that is: ./rttov_output/...
     """
 
-    #typ = sys.argv[1]
     wrfout_path = sys.argv[1]
+
+    do_both = sys.argv[2]=='both'
+    do_ironly = sys.argv[2]=='IR'
+    do_visonly = sys.argv[2]=='VIS'
+
+    output_xarray = False if sys.argv[3]=='np' else True
 
     if not os.path.isfile(wrfout_path):
         raise IOError('could not open '+wrfout_path)
 
     outdir = os.path.dirname(wrfout_path)
     ds = xr.open_dataset(wrfout_path)
-    times = ds.Time[1:]
-
-    do_both = len(sys.argv)==2
-    do_ironly = (len(sys.argv)==3 and sys.argv[2]=='IR')
-    do_visonly = (len(sys.argv)==3 and sys.argv[2]=='VIS')
+    times = ds.Time
 
     if do_both or do_ironly:
-        config = setup_IR()
+        config = setup_IR(output_xarray)
         for t in times:
-            call_rttov(ds.sel(Time=t), outdir, config)
+            call_pyrttov(ds.sel(Time=t), outdir, config)
 
     if do_both or do_visonly:
-        config = setup_VIS()
+        config = setup_VIS(output_xarray)
         for t in times:
-            call_rttov(ds.sel(Time=t), outdir, config)
+            call_pyrttov(ds.sel(Time=t), outdir, config)
