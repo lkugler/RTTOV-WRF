@@ -1,6 +1,10 @@
 # RTTOV-WRF
 Simulate SEVIRI satellite channels from WRF output
 
+- Input: wrfout file (NetCDF format) written by WRF
+- Output: numpy array of brightness temperatures or reflectances.
+
+
 ### To use RTTOV with WRF, 
 1) download and compile RTTOV from [nwpsaf.eu](https://www.nwpsaf.eu/site/software/rttov/).
 2) get the `pysolar` module
