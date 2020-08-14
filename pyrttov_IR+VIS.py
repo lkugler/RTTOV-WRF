@@ -1,19 +1,20 @@
 #!/opt/sw/spack-0.12.1/opt/spack/linux-centos7-x86_64/intel-19.0.5.281/miniconda3-4.6.14-he6cj4ytueiygecmiasewojny57sv67s/bin/python
 
-import numpy as np
 import os, time
 import sys
 import glob
+from paths import path_RTTOV, path_conda
+
+sys.path.append(path_RTTOV+'/wrapper')
 import pyrttov
 
-# hack to get my conda packages
-sys.path.append("/home/fs71386/lkugler/miniconda3/lib/python3.7/site-packages")
+if path_conda:
+    sys.path.append(path_conda)
+import numpy as np
 import datetime as dt
 import pandas as pd
 import xarray as xr
 from pysolar.solar import get_altitude, get_azimuth
-
-rttov_installdir = '../'
 
 class Container(object):
     pass
@@ -257,10 +258,10 @@ def setup_IR():
     config.nchan = len(chan_list_seviri)
     config.chan_seviri_names = ('NIR16', 'IR39', 'WV73', 'IR108')
 
-    seviriRttov.FileCoef = '{}/{}'.format(rttov_installdir,
-                                          "rtcoef_rttov12/rttov9pred54L/rtcoef_msg_4_seviri.dat")
-    seviriRttov.FileSccld = '{}/{}'.format(rttov_installdir,
-                                          "rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
+    seviriRttov.FileCoef = '{}/{}'.format(path_RTTOV,
+                            "/rtcoef_rttov12/rttov9pred54L/rtcoef_msg_4_seviri.dat")
+    seviriRttov.FileSccld = '{}/{}'.format(path_RTTOV,
+                            "/rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
 
     seviriRttov.Options.StoreRad = False
     seviriRttov.Options.Nthreads = 48
@@ -287,10 +288,10 @@ def setup_IR():
         sys.exit(1)
 
     irAtlas = pyrttov.Atlas()
-    irAtlas.AtlasPath = '{}/{}'.format(rttov_installdir, "emis_data")
+    irAtlas.AtlasPath = '{}/{}'.format(path_RTTOV, "/emis_data")
 
     brdfAtlas = pyrttov.Atlas()
-    brdfAtlas.AtlasPath = '{}/{}'.format(rttov_installdir, "brdf_data")
+    brdfAtlas.AtlasPath = '{}/{}'.format(path_RTTOV, "/brdf_data")
 
     config.seviriRttov = seviriRttov
     config.irAtlas = irAtlas
@@ -316,16 +317,16 @@ def setup_VIS():
     # - enable CO2 simulations for HIRS (the CO2 profiles are ignored for
     #   the SEVIRI and MHS simulations)
 
-    seviriRttov.FileCoef = '{}/{}'.format(rttov_installdir,
-                                          "rtcoef_rttov12/rttov9pred54L/rtcoef_msg_4_seviri.dat")
+    seviriRttov.FileCoef = '{}/{}'.format(path_RTTOV,
+                                          "/rtcoef_rttov12/rttov9pred54L/rtcoef_msg_4_seviri.dat")
     # CLOUD COEFFICIENTS
-    seviriRttov.FileSccld = '{}/{}'.format(rttov_installdir,
-                                          "rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
+    seviriRttov.FileSccld = '{}/{}'.format(path_RTTOV,
+                                          "/rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
     # MFASIS LOOKUPTABLE
-    # seviriRttov.FileMfasisCld = '{}/{}'.format(rttov_installdir,
-    #                                       "rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_opac.H5")
-    seviriRttov.FileMfasisCld = '{}/{}'.format(rttov_installdir,
-                                          "rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_deff.H5")
+    # seviriRttov.FileMfasisCld = '{}/{}'.format(path_RTTOV,
+    #                                       "/rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_opac.H5")
+    seviriRttov.FileMfasisCld = '{}/{}'.format(path_RTTOV,
+                                          "/rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_deff.H5")
 
     seviriRttov.Options.StoreRad = False
     seviriRttov.Options.Nthreads = 48
@@ -353,10 +354,10 @@ def setup_VIS():
         sys.exit(1)
 
     irAtlas = pyrttov.Atlas()
-    irAtlas.AtlasPath = '{}/{}'.format(rttov_installdir, "emis_data")
+    irAtlas.AtlasPath = '{}/{}'.format(path_RTTOV, "/emis_data")
 
     brdfAtlas = pyrttov.Atlas()
-    brdfAtlas.AtlasPath = '{}/{}'.format(rttov_installdir, "brdf_data")
+    brdfAtlas.AtlasPath = '{}/{}'.format(path_RTTOV, "/brdf_data")
 
     config.seviriRttov = seviriRttov
     config.irAtlas = irAtlas
