@@ -1,3 +1,4 @@
+#!/opt/sw/spack-0.12.1/opt/spack/linux-centos7-x86_64/intel-19.0.5.281/miniconda3-4.6.14-he6cj4ytueiygecmiasewojny57sv67s/bin/python
 
 import os, time
 import sys
@@ -7,10 +8,8 @@ from paths import path_RTTOV, path_conda
 if path_conda:
     sys.path.append(path_conda)
 
-import IPython
 import numpy as np
 import datetime as dt
-import pandas as pd
 import xarray as xr
 from pysolar.solar import get_altitude, get_azimuth
 
@@ -35,9 +34,24 @@ def wrftime_to_datetime(xtime):
 def add_timezone_UTC(t):
     return dt.datetime(t.year, t.month, t.day, t.hour, t.minute, tzinfo=dt.timezone.utc)
 
-def call_pyrttov(ds, outdir, config):
+def get_wrfout_time(ds):
     time_np = ds.XTIME.values
     time_dt = add_timezone_UTC(wrftime_to_datetime(time_np))
+    return time_dt
+
+def call_pyrttov(ds, config):
+    """Run RTTOV, return xarray Dataset of reflectance or brightness temperature
+
+    Args:
+        ds (xr.Dataset): instance returned by xr.open_dataset, select one time
+        config (object): see example below
+
+    Example:
+            config = setup_VIS()  # or setup_IR()
+            ds_xr_out = call_pyrttov(ds_xr_in, config)
+    """
+
+    time_dt = get_wrfout_time(ds)
     print(time_dt)
 
     ########### input reading
@@ -219,50 +233,38 @@ def call_pyrttov(ds, outdir, config):
         print('Quality (qualityflag>0, #issues):', np.sum(seviriRttov.RadQuality > 0))
 
 
-    if config.output_xarray:  # setup xarray output data structure
-        dsout = ds.copy()
-        delvars = [a for a in list(ds.variables) if a != 'OLR']
-        dsout = dsout.drop_vars(delvars)
-        print(list(dsout.variables))
+    dsout = ds.copy()
+    delvars = [a for a in list(ds.variables) if not a in ['XLAT', 'XLONG']]  # 'OLR',
+    dsout = dsout.drop_vars(delvars)
 
     # save each channel to separate file
-    for i, name in enumerate(config.chan_seviri_names):
-        data = seviriRttov.BtRefl[:,i]
+    debug = False
+    if debug:
         mmin = data.ravel().min()
         mmax = data.ravel().max()
         print(name, 'min:', mmin, 'max:', mmax)
-        input_time = time_dt.strftime('%Y-%m-%d_%H:%M')
 
-        if config.output_xarray:
-            nx = len(ds.west_east)
-            dsout[name] = (("south_north", "west_east"),
-                            data.reshape(nx, nx).astype(np.float32))
-        else:
-            fout = outdir+'/rttov_output/'+input_time+'/RTout.'+input_time+'.'+name
-            os.makedirs(os.path.dirname(fout), exist_ok=True)
-            np.save(fout, data)
-            print('---------', fout+'.npy', 'saved ---------')
 
-    if config.output_xarray:
-        dsout.drop_vars('OLR')
-        if outdir is None:
-            return dsout
-        else:  # write to disk
-            fout = outdir+'/RTout.'+input_time+'.nc'
-            if os.path.isfile(fout):  # append to existing file
-                dsout_orig = xr.open_dataset(fout)
-                for var in dsout:
-                    dsout_orig[var] = dsout[var]
-                os.remove(fout)
-                dsout_orig.to_netcdf(fout)
-            else:
-                dsout.to_netcdf(fout)
+    nx, ny = len(ds.west_east), len(ds.south_north)
+    #data = np.zeros((ny, nx), dtype=np.float32)
+    for i, name in enumerate(config.chan_seviri_names):
+        data = seviriRttov.BtRefl[:,i]
+
+        dsout[name] = (("south_north", "west_east"),
+                        data.reshape(ny, nx).astype(np.float32))
+
+    dsout.coords['time'] = time_dt.replace(tzinfo=None)  # .strftime('%Y-%m-%d_%H:%M')
+
+    drop_lat_lon = True  # switch to False to retain coordinates from input file.
+    if drop_lat_lon:
+        dsout = dsout.drop_vars(['XLAT', 'XLONG'])
+    return dsout
+
 
 ############## CONFIGURATION
 
-def setup_IR(output_xarray=False):
+def setup_IR():
     config = Container()
-    config.output_xarray = output_xarray
     seviriRttov = pyrttov.Rttov()
 
     chan_list_seviri = (3, 4, 6, 9)   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
@@ -286,8 +288,8 @@ def setup_IR(output_xarray=False):
     seviriRttov.Options.VisScattModel = 1  # MFASIS=3  / 1 for IR sim necessary!
     seviriRttov.Options.IrScattModel  = 2
     seviriRttov.Options.OzoneData = False
-    seviriRttov.Options.VerboseWrapper = True
-    seviriRttov.Options.Verbose = True  # False: do not print warnings
+    seviriRttov.Options.VerboseWrapper = False
+    seviriRttov.Options.Verbose = False  # False: do not print warnings
 
     # ApplyRegLimits=True: Input profiles can be clipped to the regression limits when the limits are exceeded
     seviriRttov.Options.ApplyRegLimits = True
@@ -309,9 +311,8 @@ def setup_IR(output_xarray=False):
     config.brdfAtlas = brdfAtlas
     return config
 
-def setup_VIS(output_xarray=False):
+def setup_VIS():
     config = Container()
-    config.output_xarray = output_xarray
     seviriRttov = pyrttov.Rttov()
 
     # select channels
@@ -352,8 +353,8 @@ def setup_VIS(output_xarray=False):
     seviriRttov.Options.VisScattModel = 3  # MFASIS=3
     seviriRttov.Options.IrScattModel  = 2
     seviriRttov.Options.OzoneData = False
-    seviriRttov.Options.VerboseWrapper = True  #True
-    seviriRttov.Options.Verbose = True  # False: do not print warnings
+    seviriRttov.Options.VerboseWrapper = False  #True
+    seviriRttov.Options.Verbose = False  # False: do not print warnings
 
     # ApplyRegLimits=True: Input profiles can be clipped to the regression limits when the limits are exceeded
     seviriRttov.Options.ApplyRegLimits = True
@@ -376,20 +377,7 @@ def setup_VIS(output_xarray=False):
     config.brdfAtlas = brdfAtlas
     return config
 
-def list_subdirectories(path):
-    return [x[0] for x in os.walk(path)]
 
-def convert_byte_times_to_str(nc4_variable_time):
-    times_bytes = nc4_variable_time
-    times = []
-    nt = times_bytes.shape[0]
-    for it in range(nt):
-        time_str = ''
-        for a in times_bytes[it,:]:
-            a = a.decode('UTF-8')
-            time_str+=a
-        times.append(time_str)
-    return times
 
 ##########################
 def calc_single_channel(channel, ds):
@@ -410,45 +398,56 @@ def calc_single_channel(channel, ds):
 
     ichan = chans[channel]
     if ichan >= 3:
-        config = setup_IR(output_xarray=True)
+        config = setup_IR()
     else:
-        config = setup_VIS(output_xarray=True)
+        config = setup_VIS()
     config.nchan = 1
     config.chan_seviri_names = (channel, )
-    dsout = call_pyrttov(ds, None, config)
+    dsout = call_pyrttov(ds, config)
     return dsout
 
 if __name__ == '__main__':
-    """Converts wrfout to numpy/xarray of brightness temperature/reflectance
+    """Converts wrfout to netcdf of brightness temperature/reflectance
 
     Example call:
-    python rttov_wrf.py /path/to/wrfout_d01 VIS xr
+    python rttov_wrf.py /path/to/wrfout_d01 VIS
 
     output is put in subfolder of wrfout file
     that is: ./rttov_output/...
     """
+    print('usage: python rttov_wrf.py /path/to/wrfout_d01 (VIS|IR|both)')
 
     wrfout_path = sys.argv[1]
-
     do_both = sys.argv[2]=='both'
     do_ironly = sys.argv[2]=='IR'
     do_visonly = sys.argv[2]=='VIS'
 
-    output_xarray = False if sys.argv[3]=='np' else True
+    # do not run if output already exists
+    fout = wrfout_path.replace('wrfout_d01', 'RTout')+'.nc'
+    if os.path.isfile(fout):
+        print(fout, 'already exists, not running RTTOV.')
+        sys.exit()
 
-    if not os.path.isfile(wrfout_path):
-        raise IOError('could not open '+wrfout_path)
-
-    outdir = os.path.dirname(wrfout_path)
     ds = xr.open_dataset(wrfout_path)
     times = ds.Time
 
-    if do_both or do_ironly:
-        config = setup_IR(output_xarray)
-        for t in times:
-            call_pyrttov(ds.sel(Time=t), outdir, config)
+    list_times = []
+    for t in times:
+        channels = []
 
-    if do_both or do_visonly:
-        config = setup_VIS(output_xarray)
-        for t in times:
-            call_pyrttov(ds.sel(Time=t), outdir, config)
+        if do_both or do_ironly:
+            config = setup_IR()
+            out = call_pyrttov(ds.sel(Time=t), config)
+            channels.append(out)
+
+        if do_both or do_visonly:
+            config = setup_VIS()
+            out = call_pyrttov(ds.sel(Time=t), config)
+            channels.append(out)
+
+        out = xr.merge(channels)
+        list_times.append(out)
+
+    dsout = xr.concat(list_times, dim='time')
+    dsout.to_netcdf(fout)
+    print(fout, 'saved.')
