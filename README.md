@@ -8,12 +8,23 @@ Simulate SEVIRI satellite channels from WRF output
 with path to wrfout file as argument:
 
 `python rttov_wrf.py somepath/wrfout_d01_2008-07-30_18:00:00 VIS`
+
 creates `somepath/RTout_2008-07-30_18:00:00.nc` 
 
 ### xarray output 
+```python
+
+from rttov_wrf import call_pyrttov
+#config = setup_IR()
+config = setup_VIS()  
+
+ds = xr.open_dataset(wrfout_path)
+times = ds.Time
+
+for t in times:
     config = setup_IR()
-    config = setup_VIS()
-    dsout = call_pyrttov(ds, config)
+    rad = call_pyrttov(ds.sel(Time=t), config)
+```
 
 ### Install
 1) download and compile RTTOV from [nwpsaf.eu](https://www.nwpsaf.eu/site/software/rttov/).
