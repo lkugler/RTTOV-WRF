@@ -1,6 +1,6 @@
 #!/opt/sw/spack-0.12.1/opt/spack/linux-centos7-x86_64/intel-19.0.5.281/miniconda3-4.6.14-he6cj4ytueiygecmiasewojny57sv67s/bin/python
 
-import os, time
+import os, time, warnings
 import sys
 import glob
 from paths import path_RTTOV, path_conda
@@ -56,7 +56,7 @@ def call_pyrttov(ds, config):
 
     ########### input reading
     basetemp = 300.
-    p = (ds.P + ds.PB)/100.
+    p = ds.PB/100.  # (ds.P + ds.PB)/100. # ignore perturbation pressure as this could break monotonicity in p, and RTTOV
     theta = ds.T+basetemp
     qv = ds.QVAPOR  #  Water vapor mixing ratio  kg kg-1
     qi = ds.QICE  # Ice mixing ratio  kg kg-1
@@ -65,8 +65,13 @@ def call_pyrttov(ds, config):
     tsk = ds.TSK
     u, v = ds.U10, ds.V10
     psfc = ds.PSFC/100.
-    albedo = ds.ALBEDO
-    emissivity = ds.EMISS
+    try:  # in case that input is a wrfinput file (doesnt have these fields)
+        albedo = ds.ALBEDO
+        emissivity = ds.EMISS
+    except AttributeError as e:
+        warnings.warn(str(e)+' -> using default values!')
+        albedo = 0.17 + 0*tsk
+        emissivity = 0.985 + 0*tsk
 
     nlevels = p.shape[0]
     def reformat_profile(arr):
@@ -153,7 +158,9 @@ def call_pyrttov(ds, config):
     # myProfiles.CLW = clw
 
     # quickfix
-    print('cfrac', np.min(cfrac), np.max(cfrac))
+    debug = False
+    if debug:
+        print('cfrac', np.min(cfrac), np.max(cfrac))
     myProfiles.Cfrac = cfrac  # cloud fraction
 
     # WATER CLOUDS
@@ -238,7 +245,6 @@ def call_pyrttov(ds, config):
     dsout = dsout.drop_vars(delvars)
 
     # save each channel to separate file
-    debug = False
     if debug:
         mmin = data.ravel().min()
         mmax = data.ravel().max()
@@ -267,9 +273,10 @@ def setup_IR():
     config = Container()
     seviriRttov = pyrttov.Rttov()
 
-    chan_list_seviri = (3, 4, 6, 9)   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
+    chan_list_seviri = (6, 9)   #  4
+    # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
     config.nchan = len(chan_list_seviri)
-    config.chan_seviri_names = ('NIR16', 'IR39', 'WV73', 'IR108')
+    config.chan_seviri_names = ('WV73', 'IR108')  # 'NIR16', 'IR39', 
 
     seviriRttov.FileCoef = '{}/{}'.format(path_RTTOV,
                             "/rtcoef_rttov12/rttov9pred54L/rtcoef_msg_4_seviri.dat")
@@ -277,8 +284,8 @@ def setup_IR():
                             "/rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
 
     seviriRttov.Options.StoreRad = False
-    seviriRttov.Options.Nthreads = 12
-    seviriRttov.Options.NprofsPerCall = 1000
+    seviriRttov.Options.Nthreads = 48
+    seviriRttov.Options.NprofsPerCall = 840
 
     seviriRttov.Options.AddInterp = True
     seviriRttov.Options.AddSolar = True   # true with MFASIS
@@ -316,9 +323,9 @@ def setup_VIS():
     seviriRttov = pyrttov.Rttov()
 
     # select channels
-    chan_list_seviri = (1, 2 )   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
+    chan_list_seviri = (1,) # 2 )   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
     config.nchan = len(chan_list_seviri)
-    config.chan_seviri_names = ('VIS06', 'VIS08') #, 'NIR16', 'IR39', 'WV73', 'IR108')
+    config.chan_seviri_names = ('VIS06', ) # 'VIS08') #, 'NIR16', 'IR39', 'WV73', 'IR108')
 
     # Set the options for each Rttov instance:
     # - the path to the coefficient file must always be specified
@@ -342,8 +349,8 @@ def setup_VIS():
                                           "/rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_deff.H5")
 
     seviriRttov.Options.StoreRad = False
-    seviriRttov.Options.Nthreads = 12
-    seviriRttov.Options.NprofsPerCall = 1000
+    seviriRttov.Options.Nthreads = 48
+    seviriRttov.Options.NprofsPerCall = 840
 
     seviriRttov.Options.AddInterp = True
     seviriRttov.Options.AddSolar = True
@@ -397,7 +404,7 @@ def calc_single_channel(channel, ds):
     chans = {'VIS06': 1, 'VIS08': 2, 'NIR16': 3, 'IR39': 4, 'WV73': 6, 'IR108': 9}
 
     ichan = chans[channel]
-    if ichan >= 3:
+    if ichan >= 4:
         config = setup_IR()
     else:
         config = setup_VIS()
@@ -412,10 +419,10 @@ if __name__ == '__main__':
     Example call:
     python rttov_wrf.py /path/to/wrfout_d01 VIS
 
-    output is put in subfolder of wrfout file
-    that is: ./rttov_output/...
+    output is one file per wrfout file, e.g. RTout_2008-07-30_18:00:00
     """
-    print('usage: python rttov_wrf.py /path/to/wrfout_d01 (VIS|IR|both)')
+    print('>>> Usage: python rttov_wrf.py /path/to/wrfout_d01 (VIS|IR|both)')
+    t0 = time.time()
 
     wrfout_path = sys.argv[1]
     do_both = sys.argv[2]=='both'
@@ -423,10 +430,12 @@ if __name__ == '__main__':
     do_visonly = sys.argv[2]=='VIS'
 
     # do not run if output already exists
-    fout = wrfout_path.replace('wrfout_d01', 'RTout')+'.nc'
+    fout = os.path.dirname(wrfout_path)+'/RT_'+os.path.basename(wrfout_path)+'.nc'
     if os.path.isfile(fout):
         print(fout, 'already exists, not running RTTOV.')
         sys.exit()
+    else:
+        print('running RTTOV for', wrfout_path)
 
     ds = xr.open_dataset(wrfout_path)
     times = ds.Time
@@ -450,4 +459,5 @@ if __name__ == '__main__':
 
     dsout = xr.concat(list_times, dim='time')
     dsout.to_netcdf(fout)
-    print(fout, 'saved.')
+    elapsed = int(time.time() - t0)
+    print(fout, 'saved, took', elapsed, 'seconds.')
