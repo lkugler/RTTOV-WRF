@@ -101,7 +101,12 @@ def call_pyrttov(ds, config):
     ####### actual rttov
     seviriRttov = config.seviriRttov
     irAtlas = config.irAtlas
-    brdfAtlas = config.brdfAtlas
+    try:
+        brdfAtlas = config.brdfAtlas
+        brdfAtlas.loadBrdfAtlas(time_dt.month, seviriRttov) # Supply Rttov object to enable single-instrument initialisation
+        brdfAtlas.IncSea = False                # Do not use BRDF atlas for sea surface types
+    except AttributeError:
+        pass 
 
     nprofiles = p.shape[0]
     nlevels = p.shape[1]
@@ -164,7 +169,11 @@ def call_pyrttov(ds, config):
     myProfiles.Cfrac = cfrac  # cloud fraction
 
     # WATER CLOUDS
-    myProfiles.ClwScheme = 2*np.ones((nprofiles))  # "Deff"
+    dummy = np.ones((nprofiles, 2))
+    dummy[:,0] = 2  # clw_scheme : (1) OPAC or (2) Deff scheme
+    dummy[:,1] = 1  # clwde_param : currently only "1" possible
+    myProfiles.ClwScheme = dummy
+
     myProfiles.Clwde = 20*np.ones((nprofiles,nlevels))  # microns effective diameter
     # Cloud types - concentrations in kg/kg
     myProfiles.Stco = clw  # Stratus Continental STCO
@@ -193,20 +202,19 @@ def call_pyrttov(ds, config):
     surftype = np.array([[0, 0]], dtype=np.int32)
     myProfiles.SurfType = expand(nprofiles, surftype)
     # skin[10][nprofiles]: skin T, salinity, snow_frac, foam_frac, fastem_coefsx5, specularity
-    skin = np.array([[270., 35., 0., 0., 3.0, 5.0, 15.0, 0.1, 0.3, 0.]], dtype=np.float64)
+    skin = np.array([[270., 35., 0., 0., 3.0, 5.0, 15.0, 0.1, 0.3]], dtype=np.float64)
     myProfiles.Skin = expand(nprofiles, skin)
     myProfiles.Skin[:,0] = tsk[:,0]
 
     seviriRttov.Profiles = myProfiles
     irAtlas.loadIrEmisAtlas(time_dt.month, ang_corr=True) # Include angular correction, but do not initialise for single-instrument
-    brdfAtlas.loadBrdfAtlas(time_dt.month, seviriRttov) # Supply Rttov object to enable single-instrument initialisation
-    brdfAtlas.IncSea = False                # Do not use BRDF atlas for sea surface types
-
     #######################################
     # Set up the surface emissivity/reflectance arrays and associate with the Rttov objects
-    surfemisrefl_seviri = np.zeros((2, nprofiles, config.nchan), dtype=np.float64)
+    surfemisrefl_seviri = np.zeros((4, nprofiles, config.nchan), dtype=np.float64)
     surfemisrefl_seviri[0,:,:] = emissivity  # emissivity
     surfemisrefl_seviri[1,:,:] = albedo/np.pi  # reflectance
+    surfemisrefl_seviri[2,:,:] = 0.  # diffuse reflectance
+    surfemisrefl_seviri[3,:,:] = 0.  # specularity
     seviriRttov.SurfEmisRefl = surfemisrefl_seviri
 
     albedo_emiss_by_RTTOV = False
@@ -218,8 +226,8 @@ def call_pyrttov(ds, config):
         try:
             # Do not supply a channel list for SEVIRI: this returns emissivity/BRDF values for all
             # *loaded* channels which is what is required
-            surfemisrefl_seviri[0,:,:] = irAtlas.getEmisBrdf(seviriRttov)
-            surfemisrefl_seviri[1,:,:] = brdfAtlas.getEmisBrdf(seviriRttov)
+            surfemisrefl_seviri[:,:,0] = irAtlas.getEmisBrdf(seviriRttov)
+            surfemisrefl_seviri[:,:,1] = brdfAtlas.getEmisBrdf(seviriRttov)
         except pyrttov.RttovError as e:
             # If there was an error the emissivities/BRDFs will not have been modified so it
             # is OK to continue and call RTTOV with calcemis/calcrefl set to TRUE everywhere
@@ -279,9 +287,9 @@ def setup_IR():
     config.chan_seviri_names = ('WV73', 'IR108')  # 'NIR16', 'IR39', 
 
     seviriRttov.FileCoef = '{}/{}'.format(path_RTTOV,
-                            "/rtcoef_rttov12/rttov9pred54L/rtcoef_msg_4_seviri.dat")
+                            "/rtcoef_rttov13/rttov13pred54L/rtcoef_msg_4_seviri_o3co2.dat")
     seviriRttov.FileSccld = '{}/{}'.format(path_RTTOV,
-                            "/rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
+                            "/rtcoef_rttov13/cldaer_visir/sccldcoef_msg_4_seviri.dat")
 
     seviriRttov.Options.StoreRad = False
     seviriRttov.Options.Nthreads = 48
@@ -310,12 +318,12 @@ def setup_IR():
     irAtlas = pyrttov.Atlas()
     irAtlas.AtlasPath = '{}/{}'.format(path_RTTOV, "/emis_data")
 
-    brdfAtlas = pyrttov.Atlas()
-    brdfAtlas.AtlasPath = '{}/{}'.format(path_RTTOV, "/brdf_data")
+    #brdfAtlas = pyrttov.Atlas()
+    #brdfAtlas.AtlasPath = '{}/{}'.format(path_RTTOV, "/brdf_data")
 
     config.seviriRttov = seviriRttov
     config.irAtlas = irAtlas
-    config.brdfAtlas = brdfAtlas
+    #config.brdfAtlas = brdfAtlas
     return config
 
 def setup_VIS():
@@ -338,15 +346,15 @@ def setup_VIS():
     #   the SEVIRI and MHS simulations)
 
     seviriRttov.FileCoef = '{}/{}'.format(path_RTTOV,
-                                          "/rtcoef_rttov12/rttov9pred54L/rtcoef_msg_4_seviri.dat")
+                                          "/rtcoef_rttov13/rttov13pred54L/rtcoef_msg_4_seviri_o3co2.dat")
     # CLOUD COEFFICIENTS
     seviriRttov.FileSccld = '{}/{}'.format(path_RTTOV,
-                                          "/rtcoef_rttov12/cldaer_visir/sccldcoef_msg_4_seviri.dat")
+                                          "/rtcoef_rttov13/cldaer_visir/sccldcoef_msg_4_seviri.dat")
     # MFASIS LOOKUPTABLE
     # seviriRttov.FileMfasisCld = '{}/{}'.format(path_RTTOV,
     #                                       "/rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_opac.H5")
     seviriRttov.FileMfasisCld = '{}/{}'.format(path_RTTOV,
-                                          "/rtcoef_rttov12/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_deff.H5")
+                                          "/rtcoef_rttov13/mfasis_lut/rttov_mfasis_cld_msg_4_seviri_deff.H5")
 
     seviriRttov.Options.StoreRad = False
     seviriRttov.Options.Nthreads = 48
