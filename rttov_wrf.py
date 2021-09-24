@@ -50,11 +50,18 @@ def call_pyrttov(ds, config):
             config = setup_VIS()  # or setup_IR()
             ds_xr_out = call_pyrttov(ds_xr_in, config)
     """
-
+    debug = False
     time_dt = get_wrfout_time(ds)
     print(time_dt)
 
-    ########### input reading
+    surface_altitude = 0.49  # in kilometres
+    # coordinates used for calculating solar angles (sunzen, sunazi)
+    lat = 45.
+    lon = 0.
+    satzen = 45.  # satellite zenith angle
+    satazi = 180.  # satellite azimuth angle
+
+    ########### read the input file
     basetemp = 300.
     p = ds.PB/100.  # (ds.P + ds.PB)/100. # ignore perturbation pressure as this could break monotonicity in p, and RTTOV
     theta = ds.T+basetemp
@@ -98,13 +105,13 @@ def call_pyrttov(ds, config):
     kappa = 2/7
     tmp = theta*(p*1e-3)**kappa  # ignoring water vapor in conversion to dry temperature
 
-    ####### actual rttov
+    ####### set up rttov class instances
     seviriRttov = config.seviriRttov
     irAtlas = config.irAtlas
     try:
         brdfAtlas = config.brdfAtlas
         brdfAtlas.loadBrdfAtlas(time_dt.month, seviriRttov) # Supply Rttov object to enable single-instrument initialisation
-        brdfAtlas.IncSea = False                # Do not use BRDF atlas for sea surface types
+        brdfAtlas.IncSea = False  # Do not use BRDF atlas for sea surface types
     except AttributeError:
         pass 
 
@@ -112,30 +119,18 @@ def call_pyrttov(ds, config):
     nlevels = p.shape[1]
     print('nlevels:', nlevels, 'nprofiles:', nprofiles)
 
-    # solar angles
-    lat = 45.
-    lon = 0.
+    # calculate position of the sun (solar angles)
     sunzen = 90. - get_altitude(lat, lon, time_dt)
     sunazi = get_azimuth(lat, lon, time_dt)
-    print('sunzen', sunzen, 'sunazi', sunazi)
+    print('solar angles: zenith=', sunzen, ', azimuth=', sunazi)
 
     # surface data = lowest model half level data
-    fetch = 100000.*np.ones(nprofiles)
+    fetch = 1e5*np.ones(nprofiles)  # default
     sfc_p_t_qv_u_v_fetch = np.stack([psfc[:,0], tmp[:,-1], qv[:,-1], u[:,0], v[:,0], fetch],
-                                          axis=1).astype(np.float64)
-    # sfc_u_v_fetch = np.array([[1., 1., 100000.]], dtype=np.float64)
-    # sfc_u_v_fetch = expand(nprofiles, sfc_u_v_fetch)
-    # sfc_p_t_qv_u_v_fetch = np.concatenate((arr[:,-1,:3], sfc_u_v_fetch), axis=-1)
+                                    axis=1).astype(np.float64)
 
-    # quickfix qv
-    # Q[:, :22] = 1e-6  # kg/kg  until 120 hPa
-    if True:  # FIXME: is this necessary?
-        qv[qv<1e-9] = 1e-9
-
-    # print('surface p_t_qv_u_v_fetch:', sfc_p_t_qv_u_v_fetch[0,...])
-    # print('lowest level  p tmp qv qc:', arr[0, -1, :])
-    # print('min sp', arr[:,-1,0].min())
-    # print('uppermost level p tmp qv qc:', arr[0, 0, :])
+    # avoid RTTOV complaining about too low Qv
+    qv[qv<1e-9] = 1e-9
 
     def expand2nprofiles(n, nprof):
         # Transform 1D array to a [nprof, nlevels] array
@@ -162,8 +157,6 @@ def call_pyrttov(ds, config):
     # for MW channels
     # myProfiles.CLW = clw
 
-    # quickfix
-    debug = False
     if debug:
         print('cfrac', np.min(cfrac), np.max(cfrac))
     myProfiles.Cfrac = cfrac  # cloud fraction
@@ -192,16 +185,17 @@ def call_pyrttov(ds, config):
     t_np = np.array([[time_dt.year,time_dt.month,time_dt.day,time_dt.hour,time_dt.minute,0]], dtype=np.int32)
     myProfiles.DateTimes = expand(nprofiles, t_np)
     # angles[4][nprofiles]: satzen, satazi, sunzen, sunazi
-    angles = np.array([[45.,  180., sunzen, sunazi]], dtype=np.float64)
+    angles = np.array([[satzen,  satazi, sunzen, sunazi]], dtype=np.float64)
     myProfiles.Angles = expand(nprofiles, angles)
 
     # surfgeom[3][nprofiles]: lat, lon, elev
-    surfgeom = np.array([[lat, lon, 0.49]], dtype=np.float64)
+    surfgeom = np.array([[lat, lon, surface_altitude]], dtype=np.float64)
     myProfiles.SurfGeom = expand(nprofiles, surfgeom)
     # surftype[2][nprofiles]: surftype, watertype
     surftype = np.array([[0, 0]], dtype=np.int32)
     myProfiles.SurfType = expand(nprofiles, surftype)
     # skin[10][nprofiles]: skin T, salinity, snow_frac, foam_frac, fastem_coefsx5, specularity
+    # skin T has no effect on IR108, WV73 as far as my tests went
     skin = np.array([[270., 35., 0., 0., 3.0, 5.0, 15.0, 0.1, 0.3]], dtype=np.float64)
     myProfiles.Skin = expand(nprofiles, skin)
     myProfiles.Skin[:,0] = tsk[:,0]
@@ -247,7 +241,6 @@ def call_pyrttov(ds, config):
     if seviriRttov.RadQuality is not None:
         print('Quality (qualityflag>0, #issues):', np.sum(seviriRttov.RadQuality > 0))
 
-
     dsout = ds.copy()
     delvars = [a for a in list(ds.variables) if not a in ['XLAT', 'XLONG']]  # 'OLR',
     dsout = dsout.drop_vars(delvars)
@@ -258,12 +251,10 @@ def call_pyrttov(ds, config):
         mmax = data.ravel().max()
         print(name, 'min:', mmin, 'max:', mmax)
 
-
     nx, ny = len(ds.west_east), len(ds.south_north)
     #data = np.zeros((ny, nx), dtype=np.float32)
     for i, name in enumerate(config.chan_seviri_names):
         data = seviriRttov.BtRefl[:,i]
-
         dsout[name] = (("south_north", "west_east"),
                         data.reshape(ny, nx).astype(np.float32))
 
