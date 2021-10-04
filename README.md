@@ -5,11 +5,15 @@ Simulate SEVIRI satellite channels from WRF output
 - Output: brightness temperatures or reflectances
 
 ### NetCDF output
-with path to wrfout file as argument:
+with path to wrfout file as argument
 
-`python rttov_wrf.py somepath/wrfout_d01_2008-07-30_18:00:00 VIS`
+Usage: `python rttov_wrf.py /path/to/wrfout (VIS|IR|both)`
 
-creates `somepath/RTout_2008-07-30_18:00:00.nc` 
+E.g.: `python rttov_wrf.py /home/wrfout_d01_2008-07-30_12:00:00 both`
+
+creates `/path/to//RT_wrfout_d01_2008-07-30_12:00:00.nc` 
+
+Option: Use `VIS` to get VIS 6 µm reflectance, `IR` to get WV 7.3 µm & IR 10.8 µm brightness temperature or `both` to get all channels.
 
 ### xarray output 
 ```python
