@@ -22,7 +22,6 @@ ds = xr.open_dataset(wrfout_path)
 times = ds.Time
 
 for t in times:
-    config = setup_IR()
     rad = call_pyrttov(ds.sel(Time=t), config)
 ```
 
