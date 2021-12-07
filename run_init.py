@@ -11,7 +11,7 @@ def list_dirs(path):
     return [a for a in os.listdir(path) if os.path.isdir(os.path.join(path, a))]
 
 def fun(filein):
-    cmd = RTpy+' '+scripts_dir+'/rttov_wrf.py '+filein+' both')
+    cmd = RTpy+' '+scripts_dir+'/rttov_wrf.py '+filein+' both'
     os.system(cmd) 
     print(cmd)
 
