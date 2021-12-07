@@ -1,20 +1,15 @@
-#!/opt/sw/spack-0.12.1/opt/spack/linux-centos7-x86_64/intel-19.0.5.281/miniconda3-4.6.14-he6cj4ytueiygecmiasewojny57sv67s/bin/python
-
 import os, time, warnings
 import sys
 import glob
-from paths import path_RTTOV, path_conda
-
-if path_conda:
-    sys.path.append(path_conda)
-
 import numpy as np
 import datetime as dt
 import xarray as xr
 from pysolar.solar import get_altitude, get_azimuth
-
-sys.path.append(path_RTTOV+'/wrapper')
+#sys.path.append(path_RTTOV+'/wrapper')
 import pyrttov
+
+import paths
+path_RTTOV = paths.RTTOV
 
 class Container(object):
     pass
