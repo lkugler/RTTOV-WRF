@@ -32,7 +32,7 @@ for t in times:
 ### Install
 1) download and compile RTTOV from [nwpsaf.eu](https://www.nwpsaf.eu/site/software/rttov/).
 2) download RTTOV-WRF for example by running `git clone https://github.com/lkugler/RTTOV-WRF.git`
-3) run `pip install -e .` in the command line
+3) run `cd RTTOV-WRF; pip install -e .` in the command line
 4) set paths in `paths.py`
 5) optional: configure the python script `rttov_wrf.py`, it sets various assumptions for radiative transfer.
 
