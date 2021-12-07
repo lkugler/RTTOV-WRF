@@ -31,8 +31,9 @@ for t in times:
 
 ### Install
 1) download and compile RTTOV from [nwpsaf.eu](https://www.nwpsaf.eu/site/software/rttov/).
-2) get the `pysolar` module
-3) configure the python script `rttov_wrf.py`, it sets all the assumptions for radiative transfer.
+2) run `python setup.py install` in the command line
+3) set paths in `paths.py`
+4) optional: configure the python script `rttov_wrf.py`, it sets all the assumptions for radiative transfer.
 
 
 ### Note:
