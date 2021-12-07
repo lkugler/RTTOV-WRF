@@ -19,7 +19,7 @@ def read_requirements(fname):
             requirements.append(line)
 
 
-install_requires = ['xarray', 'pysolar', 'pyrttov', 'multiprocessing']
+install_requires = ['xarray', 'pysolar']
 
 setuptools.setup(
     name="RTTOV-WRF",
