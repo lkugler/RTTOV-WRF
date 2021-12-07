@@ -5,11 +5,11 @@ import numpy as np
 import datetime as dt
 import xarray as xr
 from pysolar.solar import get_altitude, get_azimuth
-#sys.path.append(path_RTTOV+'/wrapper')
-import pyrttov
 
 import paths
 path_RTTOV = paths.RTTOV
+sys.path.append(path_RTTOV+'/wrapper')  # to ensure that pyrttov is importable
+import pyrttov
 
 class Container(object):
     pass
