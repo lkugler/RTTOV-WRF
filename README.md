@@ -38,4 +38,4 @@ for t in times:
 
 
 ### Note:
-The python version calling `rttov_wrf.py` must be the same as the one used for compiling RTTOV.
+If you receive an `ImportError: libpython3.7m.so.1.0: cannot open shared object file: No such file or directory` at line `import pyrttov`, your python can not find the pyrttov module. You must call `rttov_wrf.py` with the same python as was used for compiling RTTOV.
