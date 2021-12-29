@@ -17,6 +17,12 @@ def fun(filein):
 
 if __name__ == '__main__':
 
+    """Run RTTOV on files given a pattern of files
+
+    Example: run_pattern.py ~/data/sim_archive/exp_v1.19_Pwbub5_nat/2008-07-30_12\:00/*/wrfout_d01_2008-07-30_12\:0?\:00
+
+    Finds the files using glob.glob() pattern expansion and runs RTTOV on them
+    """
     regex = sys.argv[1]
     print ('got', regex)
     regex = regex.replace('\\', '')
