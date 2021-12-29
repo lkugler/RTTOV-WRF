@@ -45,6 +45,10 @@ In order to run, it needs:
 ### Dependencies
 Will be installed by the pip command.
 
+### Examples
+Run all ensemble members wrfout files from one forecast init (12z) at 13z with:
+`python run_pattern.py /path_to_exp/2008-07-30_12\:00/*/wrfout_d01_2008-07-30_13\:00\:00`
+
 ### Note:
 If you receive an `ImportError` similar to this one
 ```
