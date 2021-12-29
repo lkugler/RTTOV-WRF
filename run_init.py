@@ -3,6 +3,7 @@ import sys
 import glob
 import datetime as dt
 import multiprocessing as mp
+
 import paths
 RTpy = paths.python
 scripts_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +24,6 @@ if __name__ == '__main__':
     if init[-1] == '/':
         init = init[:-1]  # remove trailing /
     print ('got folder', init)
-    # init = init.replace('\\', '')
 
     init_time = dt.datetime.strptime(os.path.basename(init), '%Y-%m-%d_%H:%M')
 
