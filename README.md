@@ -3,7 +3,8 @@ Simulate SEVIRI satellite channels from WRF output
 
 - Input: wrfout file (NetCDF format) written by WRF
 - Output: brightness temperatures or reflectances
-
+- 
+## Usage examples
 ### Use on command line: NetCDF output
 
 Usage: `python rttov_wrf.py /path/to/wrfout (VIS|IR|both)`
@@ -28,8 +29,12 @@ times = ds.Time
 for t in times:
     rad = call_pyrttov(ds.sel(Time=t), config)
 ```
+### Run all ensemble members wrfout files from one forecast init (12z) at 13z with:
 
-### Install
+`python run_pattern.py /path_to_exp/2008-07-30_12\:00/*/wrfout_d01_2008-07-30_13\:00\:00`
+
+
+## Install
 1) Download and compile RTTOV from [nwpsaf.eu](https://www.nwpsaf.eu/site/software/rttov/).
 2) Download RTTOV-WRF for example by running `git clone https://github.com/lkugler/RTTOV-WRF.git`
 3) Run `cd RTTOV-WRF; pip install -e .` in the command line
@@ -44,10 +49,6 @@ In order to run, it needs:
 
 ### Dependencies
 Will be installed by the pip command.
-
-### Examples
-Run all ensemble members wrfout files from one forecast init (12z) at 13z with:
-`python run_pattern.py /path_to_exp/2008-07-30_12\:00/*/wrfout_d01_2008-07-30_13\:00\:00`
 
 ### Note:
 If you receive an `ImportError` similar to this one
