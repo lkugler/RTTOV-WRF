@@ -4,15 +4,13 @@ import glob
 import datetime as dt
 import multiprocessing as mp
 
-import paths
-RTpy = paths.python
 scripts_dir = os.path.dirname(os.path.abspath(__file__))
 
 def list_dirs(path):
     return [a for a in os.listdir(path) if os.path.isdir(os.path.join(path, a))]
 
 def fun(filein):
-    cmd = RTpy+' '+scripts_dir+'/rttov_wrf.py '+filein+' both'
+    cmd = 'python '+scripts_dir+'/rttov_wrf.py '+filein+' both'
     os.system(cmd) 
     print(cmd)
 
