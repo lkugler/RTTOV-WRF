@@ -102,13 +102,6 @@ def call_pyrttov(ds, config):
 
     ####### set up rttov class instances
     seviriRttov = config.seviriRttov
-    irAtlas = config.irAtlas
-    try:
-        brdfAtlas = config.brdfAtlas
-        brdfAtlas.loadBrdfAtlas(time_dt.month, seviriRttov) # Supply Rttov object to enable single-instrument initialisation
-        brdfAtlas.IncSea = False  # Do not use BRDF atlas for sea surface types
-    except AttributeError:
-        pass 
 
     nprofiles = p.shape[0]
     nlevels = p.shape[1]
@@ -124,8 +117,8 @@ def call_pyrttov(ds, config):
     sfc_p_t_qv_u_v_fetch = np.stack([psfc[:,0], tmp[:,-1], qv[:,-1], u[:,0], v[:,0], fetch],
                                     axis=1).astype(np.float64)
 
-    # avoid RTTOV complaining about too low Qv
-    qv[qv<1e-9] = 1e-9
+    # RTTOV hard limit on input data
+    qv[qv<1e-11] = 1e-11
 
     def expand2nprofiles(n, nprof):
         # Transform 1D array to a [nprof, nlevels] array
@@ -164,9 +157,9 @@ def call_pyrttov(ds, config):
 
     myProfiles.Clwde = 20*np.ones((nprofiles,nlevels))  # microns effective diameter
     # Cloud types - concentrations in kg/kg
-    myProfiles.Stco = clw  # Stratus Continental STCO
+    myProfiles.Stco = 0*clw  # Stratus Continental STCO
     myProfiles.Stma = 0*clw  # Stratus Maritime STMA
-    myProfiles.Cucc = 0*clw  # Cumulus Continental Clean CUCC
+    myProfiles.Cucc = clw  # Cumulus Continental Clean CUCC
     myProfiles.Cucp = 0*clw  # Cumulus Continental Polluted CUCP
     myProfiles.Cuma = 0*clw  # Cumulus Maritime CUMA
     myProfiles.Cirr = ciw  # all ice clouds CIRR
@@ -196,18 +189,19 @@ def call_pyrttov(ds, config):
     myProfiles.Skin[:,0] = tsk[:,0]
 
     seviriRttov.Profiles = myProfiles
-    irAtlas.loadIrEmisAtlas(time_dt.month, ang_corr=True) # Include angular correction, but do not initialise for single-instrument
-    #######################################
-    # Set up the surface emissivity/reflectance arrays and associate with the Rttov objects
-    surfemisrefl_seviri = np.zeros((4, nprofiles, config.nchan), dtype=np.float64)
-    surfemisrefl_seviri[0,:,:] = emissivity  # emissivity
-    surfemisrefl_seviri[1,:,:] = albedo/np.pi  # reflectance
-    surfemisrefl_seviri[2,:,:] = 0.  # diffuse reflectance
-    surfemisrefl_seviri[3,:,:] = 0.  # specularity
-    seviriRttov.SurfEmisRefl = surfemisrefl_seviri
 
-    albedo_emiss_by_RTTOV = False
-    if albedo_emiss_by_RTTOV:
+    #######################################
+
+    if True:  # Custom values
+        
+        # Set up the surface emissivity/reflectance arrays and associate with the Rttov objects
+        surfemisrefl_seviri = np.zeros((4, nprofiles, config.nchan), dtype=np.float64)
+        surfemisrefl_seviri[0,:,:] = -1  # emissivity
+        surfemisrefl_seviri[1,:,:] = -1  # albedo/np.pi  # reflectance
+        surfemisrefl_seviri[2,:,:] = 0.  # diffuse reflectance
+        surfemisrefl_seviri[3,:,:] = 0.  # specularity
+        seviriRttov.SurfEmisRefl = surfemisrefl_seviri
+    else:
         # Surface emissivity/reflectance arrays must be initialised *before every call to RTTOV*
         # Negative values will cause RTTOV to supply emissivity/BRDF values (i.e. equivalent to
         # calcemis/calcrefl TRUE - see RTTOV user guide)
@@ -215,8 +209,18 @@ def call_pyrttov(ds, config):
         try:
             # Do not supply a channel list for SEVIRI: this returns emissivity/BRDF values for all
             # *loaded* channels which is what is required
-            surfemisrefl_seviri[:,:,0] = irAtlas.getEmisBrdf(seviriRttov)
-            surfemisrefl_seviri[:,:,1] = brdfAtlas.getEmisBrdf(seviriRttov)
+
+            irAtlas = config.irAtlas
+            irAtlas.loadIrEmisAtlas(time_dt.month, ang_corr=True) # Include angular correction, but do not initialise for single-instrument
+            surfemisrefl_seviri[:,:,:2] = irAtlas.getEmisBrdf(seviriRttov)
+
+            try:
+                brdfAtlas = config.brdfAtlas
+                brdfAtlas.loadBrdfAtlas(time_dt.month, seviriRttov) # Supply Rttov object to enable single-instrument initialisation
+                brdfAtlas.IncSea = False  # Do not use BRDF atlas for sea surface types
+            except AttributeError:
+                pass 
+            surfemisrefl_seviri[:,:,2] = brdfAtlas.getEmisBrdf(seviriRttov)
         except pyrttov.RttovError as e:
             # If there was an error the emissivities/BRDFs will not have been modified so it
             # is OK to continue and call RTTOV with calcemis/calcrefl set to TRUE everywhere
@@ -240,14 +244,12 @@ def call_pyrttov(ds, config):
     delvars = [a for a in list(ds.variables) if not a in ['XLAT', 'XLONG']]  # 'OLR',
     dsout = dsout.drop_vars(delvars)
 
-    # save each channel to separate file
     if debug:
         mmin = data.ravel().min()
         mmax = data.ravel().max()
         print(name, 'min:', mmin, 'max:', mmax)
 
     nx, ny = len(ds.west_east), len(ds.south_north)
-    #data = np.zeros((ny, nx), dtype=np.float32)
     for i, name in enumerate(config.chan_seviri_names):
         data = seviriRttov.BtRefl[:,i]
         dsout[name] = (("south_north", "west_east"),
@@ -267,10 +269,10 @@ def setup_IR():
     config = Container()
     seviriRttov = pyrttov.Rttov()
 
-    chan_list_seviri = (6, 9)   #  4
+    chan_list_seviri = (5, 6, 9)   #  4
     # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
     config.nchan = len(chan_list_seviri)
-    config.chan_seviri_names = ('WV73', 'IR108')  # 'NIR16', 'IR39', 
+    config.chan_seviri_names = ('WV62', 'WV73', 'IR108')  # 'NIR16', 'IR39', 
 
     seviriRttov.FileCoef = '{}/{}'.format(path_RTTOV,
                             "/rtcoef_rttov13/rttov13pred54L/rtcoef_msg_4_seviri_o3co2.dat")
@@ -395,7 +397,7 @@ def calc_single_channel(channel, ds):
     xarray.Dataset
         Contains the sat channel variable, coordinates from the input dataset.
     """
-    chans = {'VIS06': 1, 'VIS08': 2, 'NIR16': 3, 'IR39': 4, 'WV73': 6, 'IR108': 9}
+    chans = {'VIS06': 1, 'VIS08': 2, 'NIR16': 3, 'IR39': 4, 'WV62': 5, 'WV73': 6, 'IR108': 9}
 
     ichan = chans[channel]
     if ichan >= 4:
