@@ -18,6 +18,10 @@ def fun(filein):
 if __name__ == '__main__':
 
     init = sys.argv[1]
+    force = False
+    if len(sys.argv) >= 3:
+        if sys.argv[2] == 'force':
+            force = True
 
     if init[-1] == '/':
         init = init[:-1]  # remove trailing /
@@ -47,7 +51,7 @@ if __name__ == '__main__':
 
             # save time, dont rerun existing files
             p = os.path.dirname(file)+'/RT_'+os.path.basename(file)+'.nc'
-            if not os.path.isfile(p):
+            if not os.path.isfile(p) or force:
                 print(p, 'does not yet exist', flush=True)
                 pool.apply_async(fun, args=(file,))
     pool.close()
