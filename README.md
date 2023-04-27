@@ -3,7 +3,7 @@ Simulate SEVIRI satellite channels from WRF output
 
 - Input: wrfout file (NetCDF format) written by WRF
 - Output: brightness temperatures or reflectances
-- 
+
 ## Usage examples
 ### Use on command line: NetCDF output
 
@@ -13,7 +13,7 @@ For example, `python rttov_wrf.py /somepath/wrfout_d01_2008-07-30_12:00:00 both`
 
 creates `/somepath/RT_wrfout_d01_2008-07-30_12:00:00.nc` 
 
-Option: Use `VIS` to get VIS 0.6 µm reflectance, `IR` to get WV 7.3 µm & IR 10.8 µm brightness temperature or `both` to get all channels. 
+Option: Use `VIS` to get VIS 0.6 µm reflectance, `IR` to get WV 6.2 µm, 7.3 µm and IR 10.8 µm brightness temperature or `both` to get all channels. 
 You can add or remove channels in `rttov_wrf.py`.
 
 ### Use within python: Xarray output 
@@ -56,3 +56,7 @@ If you receive an `ImportError` similar to this one
 ImportError: libpython3.7m.so.1.0: cannot open shared object file: No such file or directory
 ```
 at line `import pyrttov`, then your python can not find the pyrttov module. You must call `rttov_wrf.py` with the same python as was used for compiling RTTOV.
+
+### Documentation
+For the configuration of RTTOV or in case there are errors with RTTOV, consult the documentation of RTTOV or the RTTOV-python-wrapper.
+(https://nwp-saf.eumetsat.int/site/software/rttov/documentation/)
