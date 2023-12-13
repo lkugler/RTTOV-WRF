@@ -61,8 +61,8 @@ def call_pyrttov(ds, config):
     p = ds.PB/100.  # (ds.P + ds.PB)/100. # ignore perturbation pressure as this could break monotonicity in p, and RTTOV
     theta = ds.T+basetemp
     qv = ds.QVAPOR  #  Water vapor mixing ratio  kg kg-1
-    qi = ds.QICE  # Ice mixing ratio  kg kg-1
-    qc = ds.QCLOUD
+    qi = ds.QICE + ds.QSNOW + ds.QGRAUP # Ice mixing ratio  kg kg-1
+    qc = ds.QCLOUD + ds.QRAIN  # Cloud liquid water mixing ratio  kg kg-1
     cfrac = ds.CLDFRA
     tsk = ds.TSK
     u, v = ds.U10, ds.V10
@@ -157,6 +157,7 @@ def call_pyrttov(ds, config):
 
     myProfiles.Clwde = 20*np.ones((nprofiles,nlevels))  # microns effective diameter
     # Cloud types - concentrations in kg/kg
+    # Note: the Deff scheme disregards the cloud type (see RTTOV user guide)
     myProfiles.Stco = 0*clw  # Stratus Continental STCO
     myProfiles.Stma = 0*clw  # Stratus Maritime STMA
     myProfiles.Cucc = clw  # Cumulus Continental Clean CUCC
@@ -195,11 +196,12 @@ def call_pyrttov(ds, config):
     if True:  # Custom values
         
         # Set up the surface emissivity/reflectance arrays and associate with the Rttov objects
-        surfemisrefl_seviri = np.zeros((4, nprofiles, config.nchan), dtype=np.float64)
+        surfemisrefl_seviri = np.zeros((5, nprofiles, config.nchan), dtype=np.float64)
         surfemisrefl_seviri[0,:,:] = -1  # emissivity
         surfemisrefl_seviri[1,:,:] = -1  # albedo/np.pi  # reflectance
         surfemisrefl_seviri[2,:,:] = 0.  # diffuse reflectance
         surfemisrefl_seviri[3,:,:] = 0.  # specularity
+        surfemisrefl_seviri[4,:,:] = -1  # effective Tsfc
         seviriRttov.SurfEmisRefl = surfemisrefl_seviri
     else:
         # Surface emissivity/reflectance arrays must be initialised *before every call to RTTOV*
@@ -453,6 +455,7 @@ if __name__ == '__main__':
         out = xr.merge(channels)
         list_times.append(out)
 
+    ds.close()
     dsout = xr.concat(list_times, dim='time')
     dsout.to_netcdf(fout)
     elapsed = int(time.time() - t0)
