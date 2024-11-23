@@ -11,6 +11,9 @@ path_RTTOV = paths.RTTOV
 sys.path.append(path_RTTOV+'/wrapper')  # to ensure that pyrttov is importable
 import pyrttov
 
+# https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
+chID_for_name = dict(VIS06=1, VIS08=2, NIR16=3, WV62=5, WV73=6, IR108=9)
+
 class Container(object):
     pass
 
@@ -27,14 +30,14 @@ def wrftime_to_datetime(xtime):
     return dt.datetime.strptime(np.datetime_as_string(xtime, unit='s'), '%Y-%m-%dT%H:%M:%S')
 
 def add_timezone_UTC(t):
-    return dt.datetime(t.year, t.month, t.day, t.hour, t.minute, tzinfo=dt.timezone.utc)
+    return dt.datetime(t.year, t.month, t.day, t.hour, t.minute, t.second, tzinfo=dt.timezone.utc)
 
 def get_wrfout_time(ds):
     time_np = ds.XTIME.values
     time_dt = add_timezone_UTC(wrftime_to_datetime(time_np))
     return time_dt
 
-def call_pyrttov(ds, config):
+def call_pyrttov(ds, config, kappa=0):
     """Run RTTOV, return xarray Dataset of reflectance or brightness temperature
 
     Args:
@@ -61,12 +64,13 @@ def call_pyrttov(ds, config):
     p = ds.PB/100.  # (ds.P + ds.PB)/100. # ignore perturbation pressure as this could break monotonicity in p, and RTTOV
     theta = ds.T+basetemp
     qv = ds.QVAPOR  #  Water vapor mixing ratio  kg kg-1
-    qi = ds.QICE + ds.QSNOW + ds.QGRAUP # Ice mixing ratio  kg kg-1
-    qc = ds.QCLOUD + ds.QRAIN  # Cloud liquid water mixing ratio  kg kg-1
+    qi = ds.QICE + kappa * ds.QSNOW  # see section 3a in Kostka et al. (2014)  Ice mixing ratio  kg kg-1
+    qc = ds.QCLOUD  # Cloud liquid water mixing ratio  kg kg-1
     cfrac = ds.CLDFRA
     tsk = ds.TSK
     u, v = ds.U10, ds.V10
     psfc = ds.PSFC/100.
+    
     try:  # in case that input is a wrfinput file (doesnt have these fields)
         albedo = ds.ALBEDO
         emissivity = ds.EMISS
@@ -120,13 +124,6 @@ def call_pyrttov(ds, config):
     # RTTOV hard limit on input data
     qv[qv<1e-11] = 1e-11
 
-    def expand2nprofiles(n, nprof):
-        # Transform 1D array to a [nprof, nlevels] array
-        outp = np.empty((nprof, len(n)), dtype=n.dtype)
-        for i in range(nprof):
-            outp[i, :] = n[:]
-        return outp
-
     # Declare an instance of Profiles
     myProfiles = pyrttov.Profiles(nprofiles, nlevels)
 
@@ -171,7 +168,8 @@ def call_pyrttov(ds, config):
     myProfiles.Icede = 60 * np.ones((nprofiles,nlevels))  # microns effective diameter
 
     myProfiles.S2m = expand(nprofiles, sfc_p_t_qv_u_v_fetch)
-    t_np = np.array([[time_dt.year,time_dt.month,time_dt.day,time_dt.hour,time_dt.minute,0]], dtype=np.int32)
+    t_np = np.array([[time_dt.year, time_dt.month, time_dt.day, 
+                      time_dt.hour, time_dt.minute, time_dt.second]], dtype=np.int32)
     myProfiles.DateTimes = expand(nprofiles, t_np)
     # angles[4][nprofiles]: satzen, satazi, sunzen, sunazi
     angles = np.array([[satzen,  satazi, sunzen, sunazi]], dtype=np.float64)
@@ -238,7 +236,7 @@ def call_pyrttov(ds, config):
     except pyrttov.RttovError as e:
         sys.stderr.write("Error running RTTOV direct model: {!s}".format(e))
 
-    print('output shape:', (seviriRttov.BtRefl.shape))
+    # print('output shape:', (seviriRttov.BtRefl.shape))
     if seviriRttov.RadQuality is not None:
         print('Quality (qualityflag>0, #issues):', np.sum(seviriRttov.RadQuality > 0))
 
@@ -252,7 +250,7 @@ def call_pyrttov(ds, config):
         print(name, 'min:', mmin, 'max:', mmax)
 
     nx, ny = len(ds.west_east), len(ds.south_north)
-    for i, name in enumerate(config.chan_seviri_names):
+    for i, name in enumerate(config.chan_names):
         data = seviriRttov.BtRefl[:,i]
         dsout[name] = (("south_north", "west_east"),
                         data.reshape(ny, nx).astype(np.float32))
@@ -267,14 +265,16 @@ def call_pyrttov(ds, config):
 
 ############## CONFIGURATION
 
-def setup_IR():
+def setup_IR(ir_channels_names):
     config = Container()
     seviriRttov = pyrttov.Rttov()
 
-    chan_list_seviri = (5, 6, 9)   #  4
-    # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
-    config.nchan = len(chan_list_seviri)
-    config.chan_seviri_names = ('WV62', 'WV73', 'IR108')  # 'NIR16', 'IR39', 
+    selected = []
+    for name in ir_channels_names:
+        selected.append(chID_for_name[name])
+    config.chan_names = ir_channels_names 
+    config.nchan = len(selected)
+    chan_list_seviri = tuple(selected)
 
     seviriRttov.FileCoef = '{}/{}'.format(path_RTTOV,
                             "/rtcoef_rttov13/rttov13pred54L/rtcoef_msg_4_seviri_o3co2.dat")
@@ -286,7 +286,7 @@ def setup_IR():
     seviriRttov.Options.NprofsPerCall = 840
 
     seviriRttov.Options.AddInterp = True
-    seviriRttov.Options.AddSolar = True   # true with MFASIS
+    seviriRttov.Options.AddSolar = False   # true with MFASIS
     seviriRttov.Options.AddClouds = True
     seviriRttov.Options.GridBoxAvgCloud = True
     seviriRttov.Options.UserCldOptParam = False
@@ -316,14 +316,16 @@ def setup_IR():
     #config.brdfAtlas = brdfAtlas
     return config
 
-def setup_VIS():
+def setup_VIS(vis_channels_names):
     config = Container()
     seviriRttov = pyrttov.Rttov()
 
-    # select channels
-    chan_list_seviri = (1,) # 2 )   # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
-    config.nchan = len(chan_list_seviri)
-    config.chan_seviri_names = ('VIS06', ) # 'VIS08') #, 'NIR16', 'IR39', 'WV73', 'IR108')
+    selected = []
+    for name in vis_channels_names:
+        selected.append(chID_for_name[name])
+    config.chan_names = vis_channels_names
+    config.nchan = len(selected)
+    chan_list_seviri = tuple(selected)
 
     # Set the options for each Rttov instance:
     # - the path to the coefficient file must always be specified
@@ -383,80 +385,96 @@ def setup_VIS():
     return config
 
 
-
-##########################
-def calc_single_channel(channel, ds):
-    """User interface to calculate sat image ad hoc
-
-    Parameters
-    ----------
-    channel : str
-        one out of ('VIS06', 'VIS08', 'NIR16', 'IR39', 'WV73', 'IR108')
-    ds : xarray.DataArray
-
-    Returns
-    -------
-    xarray.Dataset
-        Contains the sat channel variable, coordinates from the input dataset.
-    """
-    chans = {'VIS06': 1, 'VIS08': 2, 'NIR16': 3, 'IR39': 4, 'WV62': 5, 'WV73': 6, 'IR108': 9}
-
-    ichan = chans[channel]
-    if ichan >= 4:
-        config = setup_IR()
-    else:
-        config = setup_VIS()
-    config.nchan = 1
-    config.chan_seviri_names = (channel, )
-    dsout = call_pyrttov(ds, config)
-    return dsout
-
 if __name__ == '__main__':
     """Converts wrfout to netcdf of brightness temperature/reflectance
 
-    Example call:
-    python rttov_wrf.py /path/to/wrfout_d01 VIS
+    Usage: 
+        python rttov_wrf.py <wrfout_path> <channel_names> [--kappa=0.1]
 
-    output is one file per wrfout file, e.g. RTout_2008-07-30_18:00:00
+    Example:
+        python rttov_wrf.py /path/to/wrfout_d01 VIS06,WV73 --kappa=0.1
+
+    Note:
+        output is one file per wrfout file, e.g. RTout_2008-07-30_18:00:00
     """
-    print('>>> Usage: python rttov_wrf.py /path/to/wrfout_d01 (VIS|IR|both)')
-    t0 = time.time()
-
-    wrfout_path = sys.argv[1]
-    do_both = sys.argv[2]=='both'
-    do_ironly = sys.argv[2]=='IR'
-    do_visonly = sys.argv[2]=='VIS'
-
+    # which package to use for parsing command line arguments?
+    import argparse
+    parser = argparse.ArgumentParser(description='Converts wrfout to netcdf of brightness temperature/reflectance')
+    parser.add_argument('wrfout_path', type=str, help='path to wrfout file')
+    parser.add_argument('channel_names', type=str, help='comma-separated list of channel names, VIS06, WV73, IR108')
+    parser.add_argument('--kappa', type=float, default=0.0, help='fraction of QSNOW to be added to QICE')
+    args = parser.parse_args()
+    
+    wrfout_path = args.wrfout_path
+    channel_names = args.channel_names.split(',')
+    kappa = float(args.kappa)
+    print('wrfout_path:', wrfout_path)
+    print('channel_names:', channel_names)
+    
     # do not run if output already exists
-    fout = os.path.dirname(wrfout_path)+'/RT_'+os.path.basename(wrfout_path)+'.nc'
+    folder = os.path.dirname(wrfout_path)
+    if folder == '':
+        folder = '.'
+    fout = folder+'/RT_'+os.path.basename(wrfout_path)+'.nc'
     if os.path.isfile(fout):
         print(fout, 'already exists, not running RTTOV.')
         sys.exit()
     else:
         print('running RTTOV for', wrfout_path)
-
+        
     ds = xr.open_dataset(wrfout_path)
     times = ds.Time
-
-    list_times = []
+    
+    # calculate VIS?
+    do_VIS = False
+    for name in channel_names:
+        if name in ['VIS06', 'VIS08', 'NIR16']:
+            do_VIS = True
+            break
+    
+    # calculate IR?
+    do_IR = False
+    for name in channel_names:
+        if name in ['IR108', 'WV62', 'WV73']:
+            do_IR = True
+            break
+        
+    # which channels to compute?
+    ir_channels_names = []
+    vis_channels_names = []
+    for name in channel_names:
+        chan = chID_for_name[name]
+        if chan >= 4:
+            ir_channels_names.append(name)
+        if chan < 4:
+            vis_channels_names.append(name)
+            
+    t0 = time.time()
+    ds = ds.load()
+    l2_out = []
     for t in times:
-        channels = []
+        l_out = []
+        
+        if do_IR:
+            config = setup_IR(ir_channels_names)
+            out = call_pyrttov(ds.sel(Time=t), config, kappa=1)
+            l_out.append(out)
 
-        if do_both or do_ironly:
-            config = setup_IR()
-            out = call_pyrttov(ds.sel(Time=t), config)
-            channels.append(out)
+        if do_VIS:
+            config = setup_VIS(vis_channels_names)
+            out = call_pyrttov(ds.sel(Time=t), config, kappa=kappa)
+            l_out.append(out)
 
-        if do_both or do_visonly:
-            config = setup_VIS()
-            out = call_pyrttov(ds.sel(Time=t), config)
-            channels.append(out)
-
-        out = xr.merge(channels)
-        list_times.append(out)
+        dsout1 = xr.merge(l_out)
+        l2_out.append(dsout1)
 
     ds.close()
-    dsout = xr.concat(list_times, dim='time')
+    dsout = xr.concat(l2_out, dim='time')
+    
+    # add attributes for kappa
+    dsout.attrs['kappa_VIS'] = str(kappa)
+    dsout.attrs['kappa_IR'] = "1"
+    
     dsout.to_netcdf(fout)
     elapsed = int(time.time() - t0)
     print(fout, 'saved, took', elapsed, 'seconds.')

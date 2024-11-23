@@ -1,10 +1,11 @@
 # set your paths here
 
 # version of python which was used to compile pyRTTOV
-python = "/opt/sw/spack-0.12.1/opt/spack/linux-centos7-x86_64/intel-19.0.5.281/miniconda3-4.6.14-he6cj4ytueiygecmiasewojny57sv67s/bin/python"
+python = "python" 
 
 # where RTTOV is compiled
-RTTOV = "/gpfs/data/fs71386/lkugler/compile/RTTOV13"
+RTTOV = "/jetfs/scratch/lkugler/data/compile/RTTOV13/"  
+RTTOV_modules = "module purge; module load rttov/v13.2-gcc-8.5.0;" 
 
 # path to conda's packages (for pysolar)
-conda = "/home/fs71386/lkugler/miniconda3/lib/python3.7/site-packages"
+conda = "/jetfs/home/lkugler/miniconda3/envs/enstools/lib/python3.8/site-packages"

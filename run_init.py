@@ -6,22 +6,17 @@ import multiprocessing as mp
 
 scripts_dir = os.path.dirname(os.path.abspath(__file__))
 
+sys.path.append(scripts_dir)
+import paths
+
 def list_dirs(path):
     return [a for a in os.listdir(path) if os.path.isdir(os.path.join(path, a))]
-
-def fun(filein):
-    cmd = 'python '+scripts_dir+'/rttov_wrf.py '+filein+' both'
-    os.system(cmd) 
-    print(cmd)
-
 
 if __name__ == '__main__':
 
     init = sys.argv[1]
+    iens = sys.argv[2]
     force = False
-    if len(sys.argv) >= 3:
-        if sys.argv[2] == 'force':
-            force = True
 
     if init[-1] == '/':
         init = init[:-1]  # remove trailing /
@@ -29,31 +24,22 @@ if __name__ == '__main__':
 
     init_time = dt.datetime.strptime(os.path.basename(init), '%Y-%m-%d_%H:%M')
 
-    files = sorted(glob.glob(init+'/*/wrfout_d01_20??-??-??_??:??:00'))
-    format = 'wrfout_d01_%Y-%m-%d_%H:%M:00'
+    files = sorted(glob.glob(init+'/'+iens+'/wrfout_d01_20??-??-??_??:??:??'))
+    format = 'wrfout_d01_%Y-%m-%d_%H:%M:%S'
     times = [dt.datetime.strptime(os.path.basename(a), format) for a in files]
 
-    pool = mp.Pool(processes=10)
+    #pool = mp.Pool(processes=10)
+    files_to_compute = []
 
     for file, time in zip(files, times):
 
         # save time by running only 1, 5, 10, 20, 30, 45 files
         delta_t = time - init_time
-        
-        #if int(delta_t.seconds/60) in [1, 5, 10, 20, 30, 45, 60, 75]:
+        if True: #delta_t.seconds == 90:  #  int(delta_t.seconds/60) % 10 == 0
 
-        #if int(delta_t.seconds/60) % 10 == 0 or int(delta_t.seconds/60) in [1, 5]:
-
-        #if ((int(time.minute) in [5, 10, 15, 20, 30, 35, 40, 45, 50])
-        #   or (int(time.minute) == 0 and int(delta_t.seconds) > 0)):
-
-        if True:
-
-            # save time, dont rerun existing files
-            p = os.path.dirname(file)+'/RT_'+os.path.basename(file)+'.nc'
-            if not os.path.isfile(p) or force:
-                print(p, 'does not yet exist', flush=True)
-                pool.apply_async(fun, args=(file,))
-    pool.close()
-    pool.join()
+            os.system(paths.python+' '+scripts_dir+'/rttov_wrf.py '+file+' VIS06')
+    
+    # pool.map_async(fun, files_to_compute)
+    # pool.close()
+    # pool.join()
 
