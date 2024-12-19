@@ -283,7 +283,7 @@ def setup_IR(ir_channels_names):
 
     seviriRttov.Options.StoreRad = False
     seviriRttov.Options.Nthreads = 48
-    seviriRttov.Options.NprofsPerCall = 840
+    seviriRttov.Options.NprofsPerCall = 1024
 
     seviriRttov.Options.AddInterp = True
     seviriRttov.Options.AddSolar = False   # true with MFASIS
@@ -350,7 +350,7 @@ def setup_VIS(vis_channels_names):
 
     seviriRttov.Options.StoreRad = False
     seviriRttov.Options.Nthreads = 48
-    seviriRttov.Options.NprofsPerCall = 840
+    seviriRttov.Options.NprofsPerCall = 1024
 
     seviriRttov.Options.AddInterp = True
     seviriRttov.Options.AddSolar = True
@@ -389,7 +389,7 @@ if __name__ == '__main__':
     """Converts wrfout to netcdf of brightness temperature/reflectance
 
     Usage: 
-        python rttov_wrf.py <wrfout_path> <channel_names> [--kappa=0.1]
+        python rttov_wrf.py <wrfout_path> <channel_names> [--kappa=0.1] [--force]
 
     Example:
         python rttov_wrf.py /path/to/wrfout_d01 VIS06,WV73 --kappa=0.1
@@ -402,7 +402,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Converts wrfout to netcdf of brightness temperature/reflectance')
     parser.add_argument('wrfout_path', type=str, help='path to wrfout file')
     parser.add_argument('channel_names', type=str, help='comma-separated list of channel names, VIS06, WV73, IR108')
-    parser.add_argument('--kappa', type=float, default=0.0, help='fraction of QSNOW to be added to QICE')
+    parser.add_argument('--kappa', type=float, default=0.1, help='fraction of QSNOW to be added to QICE')
+    parser.add_argument('--force', action='store_true', help='overwrite existing output')
     args = parser.parse_args()
     
     wrfout_path = args.wrfout_path
@@ -416,13 +417,13 @@ if __name__ == '__main__':
     if folder == '':
         folder = '.'
     fout = folder+'/RT_'+os.path.basename(wrfout_path)+'.nc'
-    if os.path.isfile(fout):
+    if not args.force and os.path.isfile(fout):
         print(fout, 'already exists, not running RTTOV.')
         sys.exit()
     else:
         print('running RTTOV for', wrfout_path)
         
-    ds = xr.open_dataset(wrfout_path)
+    ds = xr.open_dataset(wrfout_path, engine='netcdf4')
     times = ds.Time
     
     # calculate VIS?
@@ -472,8 +473,7 @@ if __name__ == '__main__':
     dsout = xr.concat(l2_out, dim='time')
     
     # add attributes for kappa
-    dsout.attrs['kappa_VIS'] = str(kappa)
-    dsout.attrs['kappa_IR'] = "1"
+    dsout.attrs['KAPPA_VIS'] = str(kappa)
     
     dsout.to_netcdf(fout)
     elapsed = int(time.time() - t0)
