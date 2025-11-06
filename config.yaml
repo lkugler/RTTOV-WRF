@@ -12,17 +12,17 @@ instrument:
   channel_numbers: [1,2,3,]
   channel_names_in_output: ["alpha", "beta", "gamma"]
   options: 
-      StoreRad: False,
-      Nthreads: 128,
-      NprofsPerCall: 1024,
-      AddInterp: True,
-      AddSolar: False,   # true with MFASIS
-      AddClouds: True,
-      GridBoxAvgCloud: True,
-      UserCldOptParam: False,
-      VisScattModel: 1,  # MFASIS=3  / 1 for IR sim necessary!
-      IrScattModel : 2,
-      OzoneData: False,
-      VerboseWrapper: False,
-      Verbose: True,  # False: do not print warnings
-      ApplyRegLimits: True,  #  Input profiles can be clipped to the regression limits when the limits are exceeded
+      StoreRad: False
+      Nthreads: 48
+      NprofsPerCall: 1024
+      AddInterp: True
+      AddSolar: False   # true with MFASIS
+      AddClouds: True
+      GridBoxAvgCloud: True
+      UserCldOptParam: False
+      VisScattModel: 1  # MFASIS=3  / 1 for IR sim necessary!
+      IrScattModel : 2
+      OzoneData: False
+      VerboseWrapper: False
+      Verbose: True  # False: do not print warnings
+      ApplyRegLimits: True  #  Input profiles can be clipped to the regression limits when the limits are exceeded

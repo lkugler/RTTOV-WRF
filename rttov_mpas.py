@@ -1,6 +1,4 @@
 #!/glade/u/home/lkugler/.local/share/mamba/envs/lkugler-Py310/bin/python
-from calendar import c
-from pyexpat import model
 import os, time, warnings
 import sys
 import numpy as np
@@ -9,7 +7,7 @@ import datetime as dt
 import xarray as xr
 from scipy.spatial import cKDTree
 #from pysolar.solar import get_altitude, get_azimuth
-import pvlib
+import pvlib  # for solar position calculations
 # https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov12/ir_srf/rtcoef_msg_4_seviri_srf.html
 
 
@@ -177,6 +175,9 @@ class MPAS_Data:
         for varname, var in self.vars_2d.items():
             if 'Time' in list(var.dims):
                 self.vars_2d[varname] = var.isel(Time=0)
+                
+        # force vapor into limits
+        self.vars_3d['vapor'] = np.maximum(self.vars_3d['vapor'], 1e-10)
 
 
     def interp_to_obs(self, obs_coords_deg, method='nearest', max_distance_km=15):
@@ -382,7 +383,7 @@ def call_pyrttov(ds, dsobs, instrument, irAtlas, config):
         t = time.time()
         instrument.runDirect()
         t = time.time()-t
-        print('took', int(t*10)/10., 's')
+        print('runDirect() took', int(t*10)/10., 's')
     except pyrttov.RttovError as e:
         sys.stderr.write("Error running RTTOV direct model: {!s}".format(e))
 
@@ -495,9 +496,9 @@ if __name__ == '__main__':
     ds_model.close()
     
     # add attributes
-    dsout.attrs['coef_file'] = config['coef_file']
-    dsout.attrs['sccld_file'] = config['sccld_file']
-    dsout.attrs['channel_numbers'] = [str(a) for a in config['channel_numbers']]
+    dsout.attrs['coef_file'] = config['instrument']['coef_file']
+    dsout.attrs['sccld_file'] = config['instrument']['sccld_file']
+    dsout.attrs['channel_numbers'] = [str(a) for a in config['instrument']['channel_numbers']]
     dsout.attrs['creation_date'] = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     dsout.attrs['creator'] = os.environ.get('USER', 'unknown')
     
