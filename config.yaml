@@ -1,0 +1,28 @@
+obs_locations:
+  longitudes_range_0_360: true  # set to true if longitudes are in the range 0 to 360 degrees
+
+model_grid_file: "/glade/work/swei/projects/hydrosat/tests/test_pmo/init.nc"
+RTTOV_path: "/glade/u/home/lkugler/work/compile/rttov132_intel/"  
+
+#factor_snow: 1  # fraction of QSNOW to be added to QICE (see Kostka et al. (2014) for more details)
+
+instrument:
+  coef_file: "/glade/work/lkugler/hydrosat/rtcoef_dummy_5_dummyir.dat"
+  sccld_file: "/glade/work/lkugler/hydrosat/sccldcoef_dummy_5_dummyir.dat"
+  channel_numbers: [1,2,3,]
+  channel_names_in_output: ["alpha", "beta", "gamma"]
+  options: 
+      StoreRad: False,
+      Nthreads: 128,
+      NprofsPerCall: 1024,
+      AddInterp: True,
+      AddSolar: False,   # true with MFASIS
+      AddClouds: True,
+      GridBoxAvgCloud: True,
+      UserCldOptParam: False,
+      VisScattModel: 1,  # MFASIS=3  / 1 for IR sim necessary!
+      IrScattModel : 2,
+      OzoneData: False,
+      VerboseWrapper: False,
+      Verbose: True,  # False: do not print warnings
+      ApplyRegLimits: True,  #  Input profiles can be clipped to the regression limits when the limits are exceeded
