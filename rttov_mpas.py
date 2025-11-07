@@ -234,6 +234,8 @@ class MPAS_Data:
 
 def call_pyrttov(ds, dsobs, instrument, irAtlas, config):
     """Run RTTOV, return xarray Dataset of reflectance or brightness temperature
+    
+    We read observation locations, times, and satellite angles from netcdf.
 
     Args:
         ds (xr.Dataset): instance returned by xr.open_dataset, select one time
@@ -498,7 +500,7 @@ if __name__ == '__main__':
     # add attributes
     dsout.attrs['coef_file'] = config['instrument']['coef_file']
     dsout.attrs['sccld_file'] = config['instrument']['sccld_file']
-    dsout.attrs['channel_numbers'] = [str(a) for a in config['instrument']['channel_numbers']]
+    dsout.attrs['channel_numbers'] = str(config['instrument']['channel_numbers'])
     dsout.attrs['creation_date'] = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     dsout.attrs['creator'] = os.environ.get('USER', 'unknown')
     

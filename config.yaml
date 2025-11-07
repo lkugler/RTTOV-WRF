@@ -9,11 +9,14 @@ RTTOV_path: "/glade/u/home/lkugler/work/compile/rttov132_intel/"
 instrument:
   coef_file: "/glade/work/lkugler/hydrosat/rtcoef_dummy_5_dummyir.dat"
   sccld_file: "/glade/work/lkugler/hydrosat/sccldcoef_dummy_5_dummyir.dat"
-  channel_numbers: [1,2,3,]
+  channel_numbers: # channel numbers as in the RTTOV coefficient file
+    alpha: 1
+    beta: 2
+    gamma: 3  
   channel_names_in_output: ["alpha", "beta", "gamma"]
   options: 
       StoreRad: False
-      Nthreads: 48
+      Nthreads: 16
       NprofsPerCall: 1024
       AddInterp: True
       AddSolar: False   # true with MFASIS
@@ -24,5 +27,5 @@ instrument:
       IrScattModel : 2
       OzoneData: False
       VerboseWrapper: False
-      Verbose: True  # False: do not print warnings
+      Verbose: False  # False: do not print warnings
       ApplyRegLimits: True  #  Input profiles can be clipped to the regression limits when the limits are exceeded
